@@ -31,9 +31,11 @@ User = get_user_model()
 firebase_credentials = firebase_admin.credentials.Certificate(
     api_settings.FIREBASE_SERVICE_ACCOUNT_KEY
 )
-firebase = firebase_admin.initialize_app(
-    credential=firebase_credentials, name=__title__
-)
+
+try:
+    firebase = firebase_admin.get_app()
+except:
+    firebase = firebase_admin.initialize_app(credential=firebase_credentials)
 
 
 class FirebaseAuthentication(authentication.TokenAuthentication):
