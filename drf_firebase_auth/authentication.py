@@ -6,7 +6,6 @@ Authorization header, verifying, and locally authenticating
 from typing import Tuple, Dict
 import logging
 
-import firebase_admin
 from firebase_admin import auth as firebase_auth
 from django.utils.encoding import smart_text
 from django.utils import timezone
@@ -27,15 +26,6 @@ from . import __title__
 
 log = logging.getLogger(__title__)
 User = get_user_model()
-
-firebase_credentials = firebase_admin.credentials.Certificate(
-    api_settings.FIREBASE_SERVICE_ACCOUNT_KEY
-)
-
-try:
-    firebase = firebase_admin.get_app()
-except:
-    firebase = firebase_admin.initialize_app(credential=firebase_credentials)
 
 
 class FirebaseAuthentication(authentication.TokenAuthentication):
