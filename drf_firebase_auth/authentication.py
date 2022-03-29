@@ -57,10 +57,10 @@ class FirebaseAuthentication(authentication.TokenAuthentication):
                 token,
                 check_revoked=api_settings.FIREBASE_CHECK_JWT_REVOKED
             )
-            log.info(f'_decode_token - decoded_token: {decoded_token}')
+            # log.info(f'_decode_token - decoded_token: {decoded_token}')
             return decoded_token
         except Exception as e:
-            log.error(f'_decode_token - Exception: {e}')
+            # log.error(f'_decode_token - Exception: {e}')
             raise Exception(e)
 
     def _authenticate_token(
@@ -70,9 +70,9 @@ class FirebaseAuthentication(authentication.TokenAuthentication):
         """ Returns firebase user if token is authenticated """
         try:
             uid = decoded_token.get('uid')
-            log.info(f'_authenticate_token - uid: {uid}')
+            # log.info(f'_authenticate_token - uid: {uid}')
             firebase_user = firebase_auth.get_user(uid)
-            log.info(f'_authenticate_token - firebase_user: {firebase_user}')
+            # log.info(f'_authenticate_token - firebase_user: {firebase_user}')
             if api_settings.FIREBASE_AUTH_EMAIL_VERIFICATION:
                 if not firebase_user.email_verified:
                     raise Exception(
@@ -95,9 +95,9 @@ class FirebaseAuthentication(authentication.TokenAuthentication):
         user = None
         try:
             user = User.objects.get(email=email)
-            log.info(
-                f'_get_or_create_local_user - user.is_active: {user.is_active}'
-            )
+            # log.info(
+            #     f'_get_or_create_local_user - user.is_active: {user.is_active}'
+            # )
             if not user.is_active:
                 raise Exception(
                     'User account is not currently active.'
