@@ -90,6 +90,7 @@ class FirebaseAuthentication(authentication.TokenAuthentication):
         """
         Attempts to return or create a local User from Firebase user data
         """
+        created = False
         email = get_firebase_user_email(firebase_user)
         log.info(f'_get_or_create_local_user - email: {email}')
         user = None
@@ -120,6 +121,7 @@ class FirebaseAuthentication(authentication.TokenAuthentication):
                     username=username,
                     email=email
                 )
+                created = True
                 user.last_login = timezone.now()
                 if (
                     api_settings.FIREBASE_ATTEMPT_CREATE_WITH_DISPLAY_NAME
@@ -132,7 +134,7 @@ class FirebaseAuthentication(authentication.TokenAuthentication):
                 user.save()
             except Exception as e:
                 raise Exception(e)
-        return user
+        return user, created
 
     def _create_local_firebase_user(
         self,
