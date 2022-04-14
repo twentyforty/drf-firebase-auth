@@ -4,7 +4,9 @@ import uuid
 
 from firebase_admin import auth
 
-
+class NoFirebaseEmail(Exception):
+    pass
+    
 def get_firebase_user_email(firebase_user: auth.UserRecord) -> str:
     try:
         return (
@@ -13,7 +15,7 @@ def get_firebase_user_email(firebase_user: auth.UserRecord) -> str:
             else firebase_user.provider_data[0].email
         )
     except Exception as e:
-        raise Exception(e)
+        raise NoFirebaseEmail()
 
 
 def map_firebase_to_username_legacy(firebase_user: auth.UserRecord) -> str:

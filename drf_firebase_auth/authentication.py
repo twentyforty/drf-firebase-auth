@@ -5,6 +5,7 @@ Authorization header, verifying, and locally authenticating
 """
 from typing import Tuple, Dict
 import logging
+import uuid
 
 from firebase_admin import auth as firebase_auth
 from django.utils.encoding import smart_text
@@ -16,13 +17,15 @@ from rest_framework import (
     exceptions
 )
 import random
+import names
+
 
 # from .settings import api_settings
 from .models import (
     FirebaseUser,
     FirebaseUserProvider
 )
-from .utils import get_firebase_user_email, map_firebase_email_to_username, map_firebase_uid_to_username
+from .utils import NoFirebaseEmail, get_firebase_user_email, map_firebase_email_to_username, map_firebase_uid_to_username
 from . import __title__
 
 log = logging.getLogger(__title__)
@@ -99,59 +102,43 @@ class FirebaseAuthentication(authentication.TokenAuthentication):
         """
         Attempts to return or create a local User from Firebase user data
         """
-        created = False
-        email = get_firebase_user_email(firebase_user)
-        log.info(f'_get_or_create_local_user - email: {email}')
-        user = None
+        email = None
         try:
+            log.info(f'_get_or_create_local_user - email: {email}')
+            email = get_firebase_user_email(firebase_user)
             user = User.objects.get(email=email)
-            # log.info(
-            #     f'_get_or_create_local_user - user.is_active: {user.is_active}'
-            # )
             if not user.is_active:
                 raise Exception(
                     'User account is not currently active.'
                 )
             user.last_login = timezone.now()
             user.save()
+            return user
+
+        except NoFirebaseEmail as e:
+            local_firebase_user = FirebaseUser.objects.filter(uid=firebase_user.uid).first()
+            if local_firebase_user and local_firebase_user.user:
+                return local_firebase_user.user
+            full_name = names.get_full_name(gender='female')
+            username = _get_unique_username(full_name)
+            first_name, last_name = full_name.split(" ")[:2]
+            email = f"{uuid.uuid4()}@civiqa.com"
+            is_firebase_anonymous = True
+
         except User.DoesNotExist as e:
-            log.error(
-                f'_get_or_create_local_user - User.DoesNotExist: {email}'
-            )
+            first_name, last_name, username = _get_user_info(firebase_user, email)
+            is_firebase_anonymous = False
+            
+        return User.objects.create_user(
+            first_name=first_name,
+            last_name=last_name,
+            username=username,
+            email=email,
+            needs_nux=True,
+            is_firebase_anonymous=is_firebase_anonymous,
+            last_login = timezone.now()
+        )
 
-            first_name = ""
-            last_name = ""
-            if firebase_user.display_name is not None:
-                display_name = firebase_user.display_name.split(' ')
-                if len(display_name) == 2:
-                    first_name = display_name[0]
-                    last_name = display_name[1]
-
-            if not first_name:
-                first_name = email.split('@')[0].title()
-
-            base_username = email.split('@')[0]
-            username = base_username
-            while True:
-                if not User.objects.filter(username=username).exists():
-                    break
-                username = f"{base_username}{random.randint(1, 1000)}"
-
-            try:
-                user = User.objects.create_user(
-                    first_name=first_name,
-                    last_name=last_name,
-                    username=username,
-                    email=email,
-                    needs_nux=True
-                )
-                created = True
-                user.last_login = timezone.now()
-
-                user.save()
-            except Exception as e:
-                raise Exception(e)
-        return user, created
 
     def _create_local_firebase_user(
         self,
@@ -202,3 +189,25 @@ class FirebaseAuthentication(authentication.TokenAuthentication):
                     FirebaseUserProvider.objects.filter(
                         id=provider.id
                     ).delete()
+
+
+def _get_user_info(firebase_user, email):
+    first_name = ""
+    last_name = ""
+    if firebase_user.display_name is not None:
+        display_name = firebase_user.display_name.split(' ')
+        if len(display_name) == 2:
+            first_name = display_name[0]
+            last_name = display_name[1]
+    if not first_name:
+        first_name = email.split('@')[0].title()
+    username = _get_unique_username(first_name + ' ' + last_name)
+    return first_name, last_name, username
+
+
+def _get_unique_username(base_username: str):
+    base_username = "".join([c.lower() for c in base_username if c.isalpha()])
+    while True:
+        username = f"{base_username}{random.randint(1000, 9000)}"
+        if not User.objects.filter(username=username).exists():
+            return username
