@@ -15,24 +15,33 @@ from rest_framework import (
     authentication,
     exceptions
 )
+import random
 
-from .settings import api_settings
+# from .settings import api_settings
 from .models import (
     FirebaseUser,
     FirebaseUserProvider
 )
-from .utils import get_firebase_user_email
+from .utils import get_firebase_user_email, map_firebase_email_to_username, map_firebase_uid_to_username
 from . import __title__
 
 log = logging.getLogger(__title__)
 User = get_user_model()
 
 
+FIREBASE_AUTH_HEADER_PREFIX = "JWT"
+FIREBASE_CHECK_JWT_REVOKED = True
+FIREBASE_AUTH_EMAIL_VERIFICATION = False
+FIREBASE_CREATE_LOCAL_USER = True
+FIREBASE_ATTEMPT_CREATE_WITH_DISPLAY_NAME = True
+FIREBASE_USERNAME_MAPPING_FUNC = map_firebase_email_to_username
+
 class FirebaseAuthentication(authentication.TokenAuthentication):
     """
     Token based authentication using firebase.
     """
-    keyword = api_settings.FIREBASE_AUTH_HEADER_PREFIX
+    keyword = FIREBASE_AUTH_HEADER_PREFIX
+
 
     def authenticate_credentials(
         self,
@@ -55,7 +64,7 @@ class FirebaseAuthentication(authentication.TokenAuthentication):
         try:
             decoded_token = firebase_auth.verify_id_token(
                 token,
-                check_revoked=api_settings.FIREBASE_CHECK_JWT_REVOKED
+                check_revoked=FIREBASE_CHECK_JWT_REVOKED
             )
             # log.info(f'_decode_token - decoded_token: {decoded_token}')
             return decoded_token
@@ -73,7 +82,7 @@ class FirebaseAuthentication(authentication.TokenAuthentication):
             # log.info(f'_authenticate_token - uid: {uid}')
             firebase_user = firebase_auth.get_user(uid)
             # log.info(f'_authenticate_token - firebase_user: {firebase_user}')
-            if api_settings.FIREBASE_AUTH_EMAIL_VERIFICATION:
+            if FIREBASE_AUTH_EMAIL_VERIFICATION:
                 if not firebase_user.email_verified:
                     raise Exception(
                         'Email address of this user has not been verified.'
@@ -109,28 +118,36 @@ class FirebaseAuthentication(authentication.TokenAuthentication):
             log.error(
                 f'_get_or_create_local_user - User.DoesNotExist: {email}'
             )
-            if not api_settings.FIREBASE_CREATE_LOCAL_USER:
-                raise Exception('User is not registered to the application.')
-            username = \
-                api_settings.FIREBASE_USERNAME_MAPPING_FUNC(firebase_user)
-            log.info(
-                f'_get_or_create_local_user - username: {username}'
-            )
+
+            first_name = ""
+            last_name = ""
+            if firebase_user.display_name is not None:
+                display_name = firebase_user.display_name.split(' ')
+                if len(display_name) == 2:
+                    first_name = display_name[0]
+                    last_name = display_name[1]
+
+            if not first_name:
+                first_name = email.split('@')[0].title()
+
+            base_username = email.split('@')[0]
+            username = base_username
+            while True:
+                if not User.objects.filter(username=username).exists():
+                    break
+                username = f"{base_username}{random.randint(1, 1000)}"
+
             try:
                 user = User.objects.create_user(
+                    first_name=first_name,
+                    last_name=last_name,
                     username=username,
-                    email=email
+                    email=email,
+                    needs_nux=True
                 )
                 created = True
                 user.last_login = timezone.now()
-                if (
-                    api_settings.FIREBASE_ATTEMPT_CREATE_WITH_DISPLAY_NAME
-                    and firebase_user.display_name is not None
-                ):
-                    display_name = firebase_user.display_name.split(' ')
-                    if len(display_name) == 2:
-                        user.first_name = display_name[0]
-                        user.last_name = display_name[1]
+
                 user.save()
             except Exception as e:
                 raise Exception(e)
